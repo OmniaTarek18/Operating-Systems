@@ -2,26 +2,22 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/wait.h>
+
 typedef enum
 {
     shell_builtin,
     executable_or_error,
 } input_type;
 
-// void parent_main(){
-//     register_child_signal(on_child_exit());
-//     setup_environment();
-//     shell();
-// }
+void on_child_exit(){
+    reap_child_zombie();
+    write_to_log_file("Child terminated");
+}
 
-// void on_child_exit()
-//     reap_child_zombie();
-//     write_to_log_file("Child terminated");
-// }
-
-// void setup_environment(){
-//     cd(Current_Working_Directory);
-// }
+void setup_environment(){
+    chdir(getenv("HOME"));
+}
 
 void execute_shell_bultin(char *args[])
 {
@@ -55,49 +51,65 @@ void execute_shell_bultin(char *args[])
         }
         printf("\n");
     }
-    //review that place 
+    // review that place
     else if (!strcmp(args[0], "export"))
     {
         char var[200];
         char *value;
-        int found=0;
+        char finalval[200];
+        int found = 0;
         for (int i = 1; args[i] != NULL; i++)
         {
             int size = strlen(args[i]);
             int indx = strcspn(args[i], "=");
             if (indx != size)
             {
-                value = strchr(args[i],'=');
+                value = strchr(args[i], '=');
                 value++;
-                args[i][indx]='\0';
-                strcpy(var,args[i]);
-                found =i;
-                args[i][indx]='=';
-                printf("values is %s\n",value);
+                strncpy(var, args[i], indx);
+                var[indx] = '\0';
+                strcpy(finalval, value);
+                found = i;
             }
-            if (found > 0 && found != i){
-                strcat(value," ");
-                strcat(value,args[i]);
-                printf("value is %s\n",value);
+            if (found > 0 && found != i)
+            {
+                strcat(finalval, " ");
+                strcat(finalval, args[i]);
             }
         }
-        for (int i=0 ; args[i]!=NULL ; i++){
-            printf("%s\n",args[i]);
-        }
-
-        setenv(var, value, 1);
+        setenv(var, finalval, 1);
     }
 }
 
-// void execute_command(){
-//     child_id = fork();
-//     if child:
-//         execvp(command parsed)
-//         print("Error)
-//         exit()
-//     else if parent and foreground:
-//         waitpid(child)
-// }
+void execute_command(char *args[])
+{
+    int found_flag = 0;
+    for (int i = 1; args[i] != NULL; i++)
+    {
+        if (!strcmp(args[i], "&"))
+        {
+            found_flag = 1;
+            args[i] = NULL;
+        }
+    }
+    int child_id = fork();
+    if (child_id < 0)
+    {
+        // error
+    }
+    else if (!child_id)
+    {
+        // child part execute the process here
+        // print("Error)
+        execvp(args[0], args);
+    }
+    else
+    {
+        if (!found_flag)
+            waitpid(child_id, NULL, 0);
+
+    }
+}
 
 // take input from user
 char *read_input()
@@ -143,9 +155,8 @@ void evaluate_expression(char *args[])
         if (indx != strlen(args[i]))
         {
             char *var;
-            var = strchr(args[i],'$')+1;
+            var = strchr(args[i], '$') + 1;
             char *value = getenv(var);
-
             if (indx == 0)
             {
                 if (value)
@@ -178,7 +189,14 @@ void shell()
     int exit_now = 0;
     while (exit_now == 0)
     {
-        char *args[50] = {};
+        char *args[100] = {};
+        char *username = getlogin();
+        // char dir[200];
+        // getcwd(dir,sizeof(dir));
+        // char *home = getenv("HOME");
+        // if (!strcmp(home ,dir))
+        //     strcpy(dir,"~");
+        printf("%s@Ubuntu: ",username);
         parse_input(read_input(), args);
 
         if (strcmp(args[0], "export"))
@@ -198,7 +216,7 @@ void shell()
             execute_shell_bultin(args);
             break;
         case executable_or_error:
-            // execute_command();
+            execute_command(args);
             break;
         }
     }
@@ -207,6 +225,8 @@ void shell()
 int main()
 {
 
+    register_child_signal(on_child_exit());
+    setup_environment();
     shell();
     // what we need to do
 
